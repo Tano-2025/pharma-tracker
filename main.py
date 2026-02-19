@@ -1,44 +1,41 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import time
 
-# Configuración de la página para Tablet
+# Configuración de la página
 st.set_page_config(page_title="PharmaTrack Web", layout="wide")
 
-# --- SIMULACIÓN DE BASE DE DATOS (En memoria para el ejemplo) ---
-# En una versión real, esto leería los CSV que subas
+# --- ESTADO DE LA SESIÓN ---
 if 'bitacora' not in st.session_state:
     st.session_state.bitacora = pd.DataFrame(columns=["Lote", "Producto", "Operador", "Etapa", "Evento", "Hora"])
 
 if 'usuario_autenticado' not in st.session_state:
     st.session_state.usuario_autenticado = None
 
-# --- LÓGICA DE LOGIN ---
-if not st.session_state.usuario_autenticado:
+# --- LÓGICA DE LOGIN (FORMULARIO) ---
+def login():
     st.title("🔐 Ingreso al Sistema Pharma")
     
-    col_user, col_pass = st.columns(2)
-    with col_user:
+    # Usamos un formulario para evitar que la página se recargue en cada tecla
+    with st.form("login_form"):
         codigo = st.text_input("Código de Usuario")
-        # Simulación de búsqueda en listas.csv
-        nombres_mock = {"101": "Juan Pérez", "102": "Ana García"}
-        if codigo in nombres_mock:
-            st.info(f"Usuario: {nombres_mock[codigo]}")
-            
-    with col_pass:
         clave = st.text_input("Contraseña", type="password")
+        submit = st.form_submit_button("Ingresar", use_container_width=True)
 
-    if st.button("Ingresar", use_container_width=True):
-        if codigo in nombres_mock and clave == "1234": # Validación simple
-            st.session_state.usuario_autenticado = nombres_mock[codigo]
-            st.rerun()
-        else:
-            st.error("Credenciales inválidas")
+        if submit:
+            # Simulación de base de datos de usuarios
+            nombres_mock = {"101": "Juan Pérez", "102": "Ana García"}
+            
+            if codigo in nombres_mock and clave == "1234":
+                st.session_state.usuario_autenticado = nombres_mock[codigo]
+                st.success(f"Bienvenido {nombres_mock[codigo]}")
+                st.rerun() # Recarga para mostrar el panel principal
+            else:
+                st.error("Código o contraseña incorrectos")
 
-# --- PANEL PRINCIPAL DE PRODUCCIÓN ---
-else:
-    st.sidebar.write(f"👤 Operador: {st.session_state.usuario_autenticado}")
+# --- PANEL PRINCIPAL ---
+def main_panel():
+    st.sidebar.write(f"👤 **Operador:** {st.session_state.usuario_autenticado}")
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.usuario_autenticado = None
         st.rerun()
@@ -48,7 +45,6 @@ else:
     lote_input = st.text_input("Escriba el Lote y presione ENTER")
 
     if lote_input:
-        # Datos de prueba (Simulando datos_produccion.csv)
         datos_lotes = {
             "L001": {"Producto": "Ibuprofeno 400mg", "Tren_ID": 3},
             "L002": {"Producto": "Paracetamol 500mg", "Tren_ID": 10}
@@ -56,38 +52,45 @@ else:
 
         if lote_input in datos_lotes:
             lote_info = datos_lotes[lote_input]
-            st.success(f"📦 Producto: {lote_info['Producto']} | Tren ID: {lote_info['Tren_ID']}")
+            st.info(f"📦 **Producto:** {lote_info['Producto']} | **Tren ID:** {lote_info['Tren_ID']}")
             
-            es_secuencial = lote_info['Tren_ID'] > 5
             etapas = ["Pesaje", "Mezclado", "Granulado", "Envasado"]
-            
             st.divider()
             
             # --- INTERFAZ DE TIEMPOS ---
             cols = st.columns(len(etapas))
-            
             for i, etapa in enumerate(etapas):
                 with cols[i]:
                     st.subheader(etapa)
-                    if st.button(f"▶️ Iniciar {etapa}", key=f"ini_{etapa}"):
-                        nuevo_reg = {"Lote": lote_input, "Producto": lote_info['Producto'], 
-                                     "Operador": st.session_state.usuario_autenticado,
-                                     "Etapa": etapa, "Evento": "INICIO", "Hora": datetime.now()}
-                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])])
+                    if st.button(f"▶️ Iniciar", key=f"ini_{etapa}"):
+                        nuevo_reg = {
+                            "Lote": lote_input, "Producto": lote_info['Producto'], 
+                            "Operador": st.session_state.usuario_autenticado,
+                            "Etapa": etapa, "Evento": "INICIO", "Hora": datetime.now().strftime("%H:%M:%S")
+                        }
+                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])], ignore_index=True)
                         st.toast(f"{etapa} Iniciada")
 
-                    if st.button(f"⏹️ Fin {etapa}", key=f"fin_{etapa}"):
-                        nuevo_reg = {"Lote": lote_input, "Producto": lote_info['Producto'], 
-                                     "Operador": st.session_state.usuario_autenticado,
-                                     "Etapa": etapa, "Evento": "FIN", "Hora": datetime.now()}
-                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])])
+                    if st.button(f"⏹️ Fin", key=f"fin_{etapa}"):
+                        nuevo_reg = {
+                            "Lote": lote_input, "Producto": lote_info['Producto'], 
+                            "Operador": st.session_state.usuario_autenticado,
+                            "Etapa": etapa, "Evento": "FIN", "Hora": datetime.now().strftime("%H:%M:%S")
+                        }
+                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])], ignore_index=True)
                         st.toast(f"{etapa} Finalizada")
 
-            # --- REPORTE EN TIEMPO REAL ---
+            # --- REPORTE ---
             if not st.session_state.bitacora.empty:
                 st.divider()
                 st.subheader("📊 Historial del Lote")
-                st.dataframe(st.session_state.bitacora[st.session_state.bitacora['Lote'] == lote_input])
-
+                df_filtrado = st.session_state.bitacora[st.session_state.bitacora['Lote'] == lote_input]
+                st.table(df_filtrado) # Table es más amigable en Tablet que dataframe
         else:
-            st.warning("Lote no encontrado.")
+            st.warning("El lote no existe en la base de datos.")
+
+# --- CONTROL DE FLUJO ---
+if st.session_state.usuario_autenticado is None:
+    login()
+else:
+    main_panel()
