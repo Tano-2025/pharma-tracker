@@ -2,95 +2,62 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Configuración de la página
-st.set_page_config(page_title="PharmaTrack Web", layout="wide")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="PharmaTrack - Acceso", layout="centered")
 
-# --- ESTADO DE LA SESIÓN ---
-if 'bitacora' not in st.session_state:
-    st.session_state.bitacora = pd.DataFrame(columns=["Lote", "Producto", "Operador", "Etapa", "Evento", "Hora"])
+# Simulación de base de datos de usuarios (Esto podría venir de un CSV)
+USUARIOS_DB = {
+    "101": {"nombre": "Juan Pérez", "clave": "1234"},
+    "102": {"nombre": "Ana García", "clave": "abcd"}
+}
 
-if 'usuario_autenticado' not in st.session_state:
-    st.session_state.usuario_autenticado = None
+# --- INICIALIZACIÓN DE SESIÓN ---
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+if 'usuario_nombre' not in st.session_state:
+    st.session_state.usuario_nombre = ""
 
-# --- LÓGICA DE LOGIN (FORMULARIO) ---
+# --- FUNCIÓN DE LOGIN ---
 def login():
-    st.title("🔐 Ingreso al Sistema Pharma")
+    st.title("🔐 Control de Acceso Pharma")
+    st.markdown("---")
     
-    # Usamos un formulario para evitar que la página se recargue en cada tecla
-    with st.form("login_form"):
-        codigo = st.text_input("Código de Usuario")
-        clave = st.text_input("Contraseña", type="password")
-        submit = st.form_submit_button("Ingresar", use_container_width=True)
-
-        if submit:
-            # Simulación de base de datos de usuarios
-            nombres_mock = {"101": "Juan Pérez", "102": "Ana García"}
-            
-            if codigo in nombres_mock and clave == "1234":
-                st.session_state.usuario_autenticado = nombres_mock[codigo]
-                st.success(f"Bienvenido {nombres_mock[codigo]}")
-                st.rerun() # Recarga para mostrar el panel principal
+    # Usamos un formulario para agrupar los inputs
+    with st.form("formulario_login"):
+        user_code = st.text_input("Código de Operador", placeholder="Ej: 101")
+        password = st.text_input("Contraseña", type="password")
+        boton_entrar = st.form_submit_button("Ingresar al Sistema", use_container_width=True)
+        
+        if boton_entrar:
+            if user_code in USUARIOS_DB and USUARIOS_DB[user_code]["clave"] == password:
+                st.session_state.autenticado = True
+                st.session_state.usuario_nombre = USUARIOS_DB[user_code]["nombre"]
+                st.success(f"Bienvenido, {st.session_state.usuario_nombre}")
+                st.rerun() # Recarga la página para mostrar el contenido
             else:
-                st.error("Código o contraseña incorrectos")
+                st.error("⚠️ Código o contraseña incorrectos. Intente de nuevo.")
 
-# --- PANEL PRINCIPAL ---
-def main_panel():
-    st.sidebar.write(f"👤 **Operador:** {st.session_state.usuario_autenticado}")
+# --- PANEL PRINCIPAL (Solo se ve si está autenticado) ---
+def panel_principal():
+    # Barra lateral con info de usuario
+    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3022/3022215.png", width=100)
+    st.sidebar.write(f"🟢 **Operador:** {st.session_state.usuario_nombre}")
+    
     if st.sidebar.button("Cerrar Sesión"):
-        st.session_state.usuario_autenticado = None
+        st.session_state.autenticado = False
         st.rerun()
 
+    # Contenido de tu aplicación original
     st.title("🚀 Control de Fabricación")
+    st.info(f"Sesión iniciada a las: {datetime.now().strftime('%H:%M')}")
     
-    lote_input = st.text_input("Escriba el Lote y presione ENTER")
+    # Aquí continuaría el resto de tu código (Lotes, Etapas, etc.)
+    lote = st.text_input("Ingrese número de lote para comenzar:")
+    if lote:
+        st.write(f"Trabajando en el lote: **{lote}**")
 
-    if lote_input:
-        datos_lotes = {
-            "L001": {"Producto": "Ibuprofeno 400mg", "Tren_ID": 3},
-            "L002": {"Producto": "Paracetamol 500mg", "Tren_ID": 10}
-        }
-
-        if lote_input in datos_lotes:
-            lote_info = datos_lotes[lote_input]
-            st.info(f"📦 **Producto:** {lote_info['Producto']} | **Tren ID:** {lote_info['Tren_ID']}")
-            
-            etapas = ["Pesaje", "Mezclado", "Granulado", "Envasado"]
-            st.divider()
-            
-            # --- INTERFAZ DE TIEMPOS ---
-            cols = st.columns(len(etapas))
-            for i, etapa in enumerate(etapas):
-                with cols[i]:
-                    st.subheader(etapa)
-                    if st.button(f"▶️ Iniciar", key=f"ini_{etapa}"):
-                        nuevo_reg = {
-                            "Lote": lote_input, "Producto": lote_info['Producto'], 
-                            "Operador": st.session_state.usuario_autenticado,
-                            "Etapa": etapa, "Evento": "INICIO", "Hora": datetime.now().strftime("%H:%M:%S")
-                        }
-                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])], ignore_index=True)
-                        st.toast(f"{etapa} Iniciada")
-
-                    if st.button(f"⏹️ Fin", key=f"fin_{etapa}"):
-                        nuevo_reg = {
-                            "Lote": lote_input, "Producto": lote_info['Producto'], 
-                            "Operador": st.session_state.usuario_autenticado,
-                            "Etapa": etapa, "Evento": "FIN", "Hora": datetime.now().strftime("%H:%M:%S")
-                        }
-                        st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo_reg])], ignore_index=True)
-                        st.toast(f"{etapa} Finalizada")
-
-            # --- REPORTE ---
-            if not st.session_state.bitacora.empty:
-                st.divider()
-                st.subheader("📊 Historial del Lote")
-                df_filtrado = st.session_state.bitacora[st.session_state.bitacora['Lote'] == lote_input]
-                st.table(df_filtrado) # Table es más amigable en Tablet que dataframe
-        else:
-            st.warning("El lote no existe en la base de datos.")
-
-# --- CONTROL DE FLUJO ---
-if st.session_state.usuario_autenticado is None:
+# --- FLUJO DEL PROGRAMA ---
+if not st.session_state.autenticado:
     login()
 else:
-    main_panel()
+    panel_principal()
