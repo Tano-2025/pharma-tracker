@@ -1,101 +1,118 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import os
 
-# Configuración de la página
-st.set_page_config(page_title="PharmaTrack Web", layout="wide")
+# Configuración para Tablet
+st.set_page_config(page_title="PharmaTrack Dinámico", layout="wide")
 
-# --- BASE DE DATOS DE OPERADORES ---
-# Puedes cambiar esto por un st.selectbox si prefieres que elijan de una lista
-USUARIOS = {
-    "101": "Juan Pérez",
-    "102": "Ana García",
-    "103": "Carlos Ruiz",
-    "104": "Elena Marín"
-}
+# --- FUNCIONES DE CARGA DE DATOS ---
+def cargar_datos_produccion():
+    """Lee el CSV de lotes y lo convierte en un diccionario para búsqueda rápida"""
+    if os.path.exists('datos_produccion.csv'):
+        try:
+            df = pd.read_csv('datos_produccion.csv')
+            # Limpieza básica: quitar espacios en blanco
+            df.columns = df.columns.str.strip()
+            # Convertir a diccionario: { 'L001': {'Producto': '...', 'Tren_ID': 3}, ... }
+            return df.set_index('Lote').to_dict('index')
+        except Exception as e:
+            st.error(f"Error al leer datos_produccion.csv: {e}")
+            return {}
+    else:
+        st.warning("⚠️ Archivo 'datos_produccion.csv' no encontrado.")
+        return {}
 
-# --- ESTADO DE LA SESIÓN ---
+# --- INICIALIZACIÓN DE ESTADOS ---
 if 'bitacora' not in st.session_state:
     st.session_state.bitacora = pd.DataFrame(columns=["Lote", "Producto", "Operador", "Etapa", "Evento", "Hora"])
 
 if 'usuario_autenticado' not in st.session_state:
     st.session_state.usuario_autenticado = None
 
-# --- PANTALLA DE ACCESO RÁPIDO ---
+# --- ACCESO POR CÓDIGO (SIN CONTRASEÑA) ---
+USUARIOS = {"101": "Juan Pérez", "102": "Ana García", "103": "Carlos Ruiz"}
+
 if not st.session_state.usuario_autenticado:
-    st.title("🏥 Acceso Rápido Pharma")
-    st.write("Ingrese su código de operador para comenzar")
-
-    # Opción A: Entrada por teclado numérica (Ideal para Tablets)
-    codigo = st.text_input("Código de Operador", placeholder="Ej: 101", help="Ingrese su ID")
+    st.title("🏥 Acceso de Operador")
+    codigo = st.text_input("Ingrese su Código de Operador", key="login_code")
     
-    # Opción B: También puedes usar un menú desplegable si es más cómodo
-    # codigo = st.selectbox("Seleccione su nombre", options=[""] + list(USUARIOS.keys()), format_func=lambda x: USUARIOS.get(x, "Seleccione..."))
-
     if codigo in USUARIOS:
         nombre = USUARIOS[codigo]
-        st.success(f"Identificado como: **{nombre}**")
-        if st.button(f"Confirmar ingreso como {nombre}", use_container_width=True):
+        if st.button(f"Entrar como {nombre}", use_container_width=True):
             st.session_state.usuario_autenticado = nombre
             st.rerun()
-    elif codigo != "":
-        st.error("Código no reconocido")
+    elif codigo:
+        st.error("Código no válido")
 
-# --- PANEL DE PRODUCCIÓN ---
+# --- PANEL DE CONTROL ---
 else:
-    # Barra lateral simplificada
-    st.sidebar.title("👤 Sesión Activa")
-    st.sidebar.subheader(st.session_state.usuario_autenticado)
-    if st.sidebar.button("❌ Salir / Cambiar Usuario"):
+    st.sidebar.title(f"👤 {st.session_state.usuario_autenticado}")
+    if st.sidebar.button("Cerrar Sesión"):
         st.session_state.usuario_autenticado = None
         st.rerun()
 
     st.title("🚀 Control de Fabricación")
+
+    # CARGA DINÁMICA: Se vuelve a leer si el usuario interactúa
+    lotes_db = cargar_datos_produccion()
     
-    # Campo de Lote
-    lote_input = st.text_input("📦 Escanee o escriba el Lote y presione ENTER")
+    # Input de Lote
+    lote_input = st.text_input("📦 Escanee o escriba el Lote y presione ENTER").strip()
 
     if lote_input:
-        # Datos de prueba
-        datos_lotes = {
-            "L001": {"Producto": "Ibuprofeno 400mg", "Tren": 3},
-            "L002": {"Producto": "Paracetamol 500mg", "Tren": 10}
-        }
-
-        if lote_input in datos_lotes:
-            info = datos_lotes[lote_input]
-            st.success(f"**Producto:** {info['Producto']} | **Tren:** {info['Tren']}")
+        if lote_input in lotes_db:
+            info = lotes_db[lote_input]
+            producto = info.get('Producto', 'Desconocido')
+            tren = info.get('Tren_ID', 'N/A')
             
-            etapas = ["Pesaje", "Mezclado", "Granulado", "Envasado"]
+            # Encabezado dinámico
+            st.success(f"✅ **Lote Identificado:** {lote_input}")
+            
+            # Uso de métricas para mejor visualización en Tablet
+            m1, m2 = st.columns(2)
+            m1.metric("Producto", producto)
+            m2.metric("Tren de Producción", f"ID: {tren}")
+
             st.divider()
             
-            # Botonera de etapas
+            # --- BOTONERA DE ETAPAS ---
+            etapas = ["Pesaje", "Mezclado", "Granulado", "Envasado"]
             cols = st.columns(len(etapas))
+            
             for i, etapa in enumerate(etapas):
                 with cols[i]:
-                    st.markdown(f"### {etapa}")
+                    st.subheader(etapa)
                     if st.button(f"▶️ INICIAR", key=f"ini_{etapa}", use_container_width=True):
                         nuevo = {
-                            "Lote": lote_input, "Producto": info['Producto'], 
+                            "Lote": lote_input, "Producto": producto, 
                             "Operador": st.session_state.usuario_autenticado,
-                            "Etapa": etapa, "Evento": "INICIO", "Hora": datetime.now().strftime("%H:%M:%S")
+                            "Etapa": etapa, "Evento": "INICIO", 
+                            "Hora": datetime.now().strftime("%H:%M:%S")
                         }
                         st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo])], ignore_index=True)
-                        st.toast(f"{etapa} Iniciada")
+                        st.toast(f"Inicio: {etapa}")
 
                     if st.button(f"⏹️ FIN", key=f"fin_{etapa}", use_container_width=True):
                         nuevo = {
-                            "Lote": lote_input, "Producto": info['Producto'], 
+                            "Lote": lote_input, "Producto": producto, 
                             "Operador": st.session_state.usuario_autenticado,
-                            "Etapa": etapa, "Evento": "FIN", "Hora": datetime.now().strftime("%H:%M:%S")
+                            "Etapa": etapa, "Evento": "FIN", 
+                            "Hora": datetime.now().strftime("%H:%M:%S")
                         }
                         st.session_state.bitacora = pd.concat([st.session_state.bitacora, pd.DataFrame([nuevo])], ignore_index=True)
-                        st.toast(f"{etapa} Finalizada")
+                        st.toast(f"Fin: {etapa}")
 
-            # Tabla de registros
+            # --- REGISTRO VISUAL ---
             if not st.session_state.bitacora.empty:
                 st.divider()
-                st.subheader("📊 Historial de hoy")
-                st.table(st.session_state.bitacora[st.session_state.bitacora['Lote'] == lote_input])
+                st.subheader("📊 Historial del Lote")
+                # Filtramos la bitácora para mostrar solo lo relacionado al lote actual
+                df_lote = st.session_state.bitacora[st.session_state.bitacora['Lote'] == lote_input]
+                st.table(df_lote[["Etapa", "Evento", "Hora", "Operador"]])
         else:
-            st.warning("Lote no encontrado.")
+            st.warning(f"El lote **{lote_input}** no existe en el archivo datos_produccion.csv")
+
+    # Botón de refresco manual de base de datos (Opcional)
+    if st.sidebar.button("🔄 Actualizar Lotes (CSV)"):
+        st.rerun()
